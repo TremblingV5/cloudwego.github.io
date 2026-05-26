@@ -19,11 +19,7 @@ description: >
 
    In previous versions, binary generic clients were bound to an IDL Service, requiring maintenance of a large number of clients. This version supports dynamically specifying the IDL Service Name per call, via the newly added `callopt.WithBinaryGenericIDLService(svcName)` / `streamcall.WithBinaryGenericIDLService(svcName)` call options, and the per-call configuration takes precedence over the configuration set at client initialization. Both Ping-Pong and streaming calls are supported. For details, see [Per-Call IDL Service Name](/docs/kitex/tutorials/advanced-feature/generic-call/basic_usage#per-call-idl-service-name).
 
-2. **New In-Process LocalCaller: Supports Unary Local Invocation**
-
-   Added `server.LocalCaller` and `server.NewLocalCaller(caller string, svr Server) (LocalCaller, error)`, which can directly invoke unary methods registered on the Server within the same process. It reuses the Server's Middleware and Tracer, keeping behavior consistent with remote invocations. Streaming methods and generic services that rely on `ServiceInfo.GenericMethod` are rejected. The legacy `server.InvokeCaller` is deprecated.
-
-3. **Recv Timeout Control for Streaming**
+2. **Recv Timeout Control for Streaming**
 
    Added `streaming.TimeoutConfig` for fine-grained Recv timeout control on streaming APIs. A dedicated timeout can be configured, and the new `DisableCancelRemote` flag controls whether the remote stream is cascaded-cancelled after timeout. Two configuration entry points are provided:
    - Per-client: `client.WithStreamRecvTimeoutConfig(streaming.TimeoutConfig)`
@@ -31,7 +27,7 @@ description: >
 
    When a Recv times out, a new error code `codes.RecvDeadlineExceeded` (value `17`) is returned together with the sentinel error `kerrors.ErrStreamingTimeout`, making timeout classification easier.
 
-4. **Fine-Grained Streaming Event Tracing - StreamEventHandler**
+3. **Fine-Grained Streaming Event Tracing - StreamEventHandler**
 
    A new event-callback mechanism, independent of the Tracer, can observe the core events of the streaming protocol layer (Stream start, Recv, Send, Recv Header, Stream finish), making it easy to build custom fine-grained streaming monitoring:
    - Client: `client.WithStreamEventHandler(rpcinfo.ClientStreamEventHandler)`
@@ -39,7 +35,7 @@ description: >
 
    New event types `stats.StreamStart`, `stats.StreamRecvHeader`, and `stats.StreamFinish` are also added. For details, see [StreamX Detailed Stream Event Tracing](/docs/kitex/tutorials/basic-feature/streamx/streamx_event_handler).
 
-### **Feature/Experience Optimization**
+### **Feature/Performance Optimization**
 1. **Kitex gRPC: Memory Optimization and Connection Leak Fixes**
    - **HTTP/2 Write Buffer Reuse and Framer-Level Pooling**: Supports per-connection pooling and reuse of write buffers, reducing memory usage for idle connections, suitable for scenarios where the service needs to directly handle a large number of gRPC connections. Use `client.WithGRPCReuseWriteBuffer` / `server.WithGRPCReuseWriteBuffer` to enable it, and further enable framer-level pooling via `ReuseWriteBufferConfig.EnableReuseHTTP2FramerBuffer`.
    - **Client-Side Cancel Object Allocation Optimization**: Reduces object allocations for unified cancel on the gRPC client side, avoiding excessive allocations in gateway scenarios where cancel operations are frequent.
@@ -55,11 +51,7 @@ description: >
 
 4. **RPCInfo Field Inlining**
 
-   Added `rpcinfo.NewRPCInfoWithInlineFields() RPCInfo`, which returns an RPCInfo with inlined sub-objects, reducing per-request pool gets and allocations. Server hot paths and LocalCaller both adopt this inlining approach.
-
-5. **Load Balance: Consistent-Hash Switched to maphash**
-
-   The consistent-hash key/node hashing in `consistBalancer` replaces `github.com/bytedance/gopkg/util/xxhash3` with `hash/maphash`. Note that `hash/maphash` uses a per-process random seed, so hash values differ across client replicas and restarts.
+   Added `rpcinfo.NewRPCInfoWithInlineFields() RPCInfo`, which returns an RPCInfo with inlined sub-objects, reducing per-request pool gets and allocations. Server hot paths adopt this inlining approach, improving request handling performance.
 
 ### **Bug Fixes**
 1. **Streaming-Related Fixes**
@@ -68,7 +60,7 @@ description: >
 
 2. **Other Fixes**
    - **rpcTimeout Ticker Leak Fix** (extremely rare): Closed the ticker in the `rpcTimeout` pool to prevent resource leaks. Most online scenarios are unaffected; this issue is only noticeable in scenarios with extremely low QPS and short processing time for the API.
-   - **Panic Caused by Writing Elements of Different Types into Container Fields in Generic Calls** (very rare): Writing elements of different types into the same container field could cause a panic. For example, if the field itself is `[]uint8`, the first input may be `uint8` while the second input may be `string`. After the fix, the writer is resolved per element instead of caching the first element's writer, and a type mismatch now returns an error.
+   - **Panic Caused by Writing Elements of Different Types into Container Fields in Generic Calls** (very rare): Writing elements of different types into the same container field could cause a panic. For example, if the field itself is `[]uint8`, the first input may be `uint8` while the second input may be `string`. After the fix, an error is returned instead of panic.
 
 ### **Special Changes - May Affect a Small Number of Services**
 > Mainly Breaking Changes and API deprecations. No impact on the vast majority of users; users with special dependencies should pay attention.
@@ -83,6 +75,10 @@ description: >
 
    The `onClose` / `onGoAway` callbacks now fire after the transport transitions to closing/draining and after `http2Client.mu` is released. Callers relying on the old ordering should migrate to `grpc.NewClientTransportWithConfig`.
 
+3. **`consistBalancer` Consistent-Hash Algorithm Switched** (#1924)
+
+   The consistent-hash key/node hashing in `consistBalancer` replaces `github.com/bytedance/gopkg/util/xxhash3` with `hash/maphash`. Because `hash/maphash` uses a per-process random seed, hash values **differ across client replicas and restarts**.
+
 #### Deprecations
 > APIs are only marked as deprecated in this version; they still work, but please migrate to the new APIs at your earliest convenience.
 
@@ -93,23 +89,13 @@ description: >
 
    See [Connection Multiplexing](/docs/kitex/tutorials/basic-feature/connection_type#connection-multiplexing) for the rationale.
 
-2. **`server.InvokeCaller` Deprecated** (#1930)
+2. **`kerrors.ErrRPCFinish` Restored as Deprecated Symbol** (#1953)
 
-   Use the newly added `server.LocalCaller` instead.
+   This API was removed in v0.15.0. v0.16.2 restores it as a deprecated symbol for backward compatibility with pre-v0.15 code.
 
-3. **`grpc.NewClientTransport` Deprecated** (#1945)
-
-   Use `grpc.NewClientTransportWithConfig(ctx, conn, opts, grpc.ClientConfig)` instead. The new entry's `OnClose` / `OnGoAway` callbacks receive context and transport parameters.
-
-4. **`kerrors.ErrRPCFinish` Restored as Deprecated Symbol** (#1953)
-
-   v0.16.2 restores this API as a deprecated symbol for backward compatibility with pre-v0.15 code.
-
-5. **Streaming-Related API Deprecations**
+3. **Streaming-Related API Deprecations**
    - `client.WithStreamRecvTimeout` is deprecated; use `client.WithStreamRecvTimeoutConfig` instead (#1911)
    - `streamcall.WithRecvTimeout` is deprecated; use `streamcall.WithRecvTimeoutConfig` instead (#1911)
-   - `rpcinfo.TraceController.GetStreamEventHandler()` is deprecated; use `TraceController.Handle*` methods instead (#1905)
-   - `internal/stream.StreamEventHandler` is deprecated; use `rpcinfo.ClientStreamEventHandler` / `rpcinfo.ServerStreamEventHandler` instead (#1905)
 
 ## **Full Change**
 

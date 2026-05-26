@@ -19,11 +19,7 @@ description: >
 
    旧版二进制泛化 Client 与 IDL Service 绑定，需要维护大量 Client。本版本支持请求时动态指定 IDL Service Name，通过新增的 `callopt.WithBinaryGenericIDLService(svcName)` / `streamcall.WithBinaryGenericIDLService(svcName)` 调用选项指定，且调用维度的配置优先级更高。Ping-Pong 和流式调用均支持，详见 [动态指定 IDL Service Name](/zh/docs/kitex/tutorials/advanced-feature/generic-call/basic_usage#动态指定-idl-service-name)。
 
-2. **新增进程内 LocalCaller：支持 unary 本地调用**
-
-   新增 `server.LocalCaller` 与 `server.NewLocalCaller(caller string, svr Server) (LocalCaller, error)`，可在进程内直接调用 Server 注册的 unary 方法。复用 Server 的 Middleware、Tracer，行为与远程调用一致；流式方法和依赖 `ServiceInfo.GenericMethod` 的 generic service 会被拒绝。旧的 `server.InvokeCaller` 标记为废弃。
-
-3. **流式接口 Recv 超时控制**
+2. **流式接口 Recv 超时控制**
 
    新增 `streaming.TimeoutConfig`，支持对流式接口 Recv 进行细粒度超时控制，可单独配置超时时间，并通过 `DisableCancelRemote` 控制超时后是否级联取消远端流。提供两种配置入口：
    - Client 维度：`client.WithStreamRecvTimeoutConfig(streaming.TimeoutConfig)`
@@ -31,7 +27,7 @@ description: >
 
    Recv 超时返回新错误码 `codes.RecvDeadlineExceeded`（值为 `17`）以及哨兵错误 `kerrors.ErrStreamingTimeout`，便于区分超时类型。
 
-4. **流式细粒度事件追踪 - StreamEventHandler**
+3. **流式细粒度事件追踪 - StreamEventHandler**
 
    新增独立于 Tracer 的流式事件回调机制，可以感知流式协议层面的核心 Event（Stream 开始、Recv、Send、Recv Header、Stream 结束），便于定制细粒度的流式监控：
    - Client：`client.WithStreamEventHandler(rpcinfo.ClientStreamEventHandler)`
@@ -39,7 +35,7 @@ description: >
 
    同时新增 `stats.StreamStart`、`stats.StreamRecvHeader`、`stats.StreamFinish` 事件类型。详见 [StreamX 流式细粒度事件追踪](/zh/docs/kitex/tutorials/basic-feature/streamx/streamx_event_handler)。
 
-### **功能/体验优化**
+### **功能/性能优化**
 1. **Kitex gRPC：内存优化与连接泄漏修复**
    - **HTTP/2 write buffer 复用与 framer 池化**：支持连接维度的 write buffer 池化复用，降低空闲连接内存占用，适用于直接承接大量 gRPC 连接的场景。通过 `client.WithGRPCReuseWriteBuffer` / `server.WithGRPCReuseWriteBuffer` 启用，并在 `ReuseWriteBufferConfig.EnableReuseHTTP2FramerBuffer` 中进一步启用 framer 层的池化。
    - **Client 侧 cancel 对象分配优化**：减少 gRPC client 在统一 cancel 场景下的对象分配，避免网关等需要频繁 cancel 的场景分配大量对象。
@@ -55,11 +51,7 @@ description: >
 
 4. **RPCInfo 字段内联**
 
-   新增 `rpcinfo.NewRPCInfoWithInlineFields() RPCInfo`，返回带内联子对象的 RPCInfo，减少每次请求的 pool get 与对象分配；server 热点路径与 LocalCaller 均采用该内联方式。
-
-5. **loadbalance：consistent-hash 使用 maphash**
-
-   `consistBalancer` 的 consistent-hash key/node 哈希将 `github.com/bytedance/gopkg/util/xxhash3` 替换为 `hash/maphash`。注意 `hash/maphash` 在每个进程使用随机种子，hash 值会在不同 client 副本和重启之间不同。
+   新增 `rpcinfo.NewRPCInfoWithInlineFields() RPCInfo`，返回带内联子对象的 RPCInfo，减少每次请求的 pool get 与对象分配；server 热点路径采用该内联方式，提升请求处理性能。
 
 ### **问题修复**
 1. **流式相关问题修复**
@@ -68,7 +60,7 @@ description: >
 
 2. **其他问题修复**
    - **rpcTimeout ticker 泄漏修复**（极小概率）：关闭 rpcTimeout pool 中的 ticker，防止资源泄漏。线上绝大部分场景无问题，只在 QPS 极低且接口处理时间较短的场景会感知到。
-   - **泛化调用容器字段写入不同类型元素 panic**（小概率）：当某个容器字段被写入了不同类型的元素时会 panic（例如字段本身是 `[]uint8`，第一个传入 `uint8`，第二个却传入 `string`）。修复后按元素逐个解析 writer 而非缓存第一个 writer，并对类型不匹配返回错误。
+   - **泛化调用容器字段写入不同类型元素 panic**（小概率）：当某个容器字段被写入了不同类型的元素时会 panic（例如字段本身是 `[]uint8`，第一个传入 `uint8`，第二个却传入 `string`）。修复后返回错误而不是直接 panic。
 
 ### **特殊变更 - 少数服务可能会有影响**
 > 主要为 Breaking Changes 与接口废弃，对绝大部分用户无影响，请有特殊依赖的用户关注。
@@ -83,6 +75,10 @@ description: >
 
    `onClose` / `onGoAway` 回调改为在 transport 状态转换为 closing/draining 并释放 `http2Client.mu` 之后触发。依赖旧时序的调用方请迁移至 `grpc.NewClientTransportWithConfig`。
 
+3. **`consistBalancer` 一致性哈希算法替换**（#1924）
+
+   `consistBalancer` 的 consistent-hash key/node 哈希将 `github.com/bytedance/gopkg/util/xxhash3` 替换为 `hash/maphash`。`hash/maphash` 在每个进程使用随机种子，hash 值会在**不同 client 副本和重启之间不同**。
+
 #### 接口废弃
 > 当前版本仅标记废弃，仍保留可用，请及时迁移到新接口。
 
@@ -93,23 +89,13 @@ description: >
 
    废弃原因详见 [连接多路复用](/zh/docs/kitex/tutorials/basic-feature/connection_type#连接多路复用)。
 
-2. **`server.InvokeCaller` 废弃**（#1930）
+2. **`kerrors.ErrRPCFinish` 恢复为废弃符号**（#1953）
 
-   使用本版本新增的 `server.LocalCaller` 替代。
+   该 API 在 v0.15.0 被移除，v0.16.2 重新加回作为废弃符号，便于 pre-v0.15 代码继续编译。
 
-3. **`grpc.NewClientTransport` 废弃**（#1945）
-
-   使用 `grpc.NewClientTransportWithConfig(ctx, conn, opts, grpc.ClientConfig)` 替代。新入口的 `OnClose` / `OnGoAway` 回调接收 context 与 transport 参数。
-
-4. **`kerrors.ErrRPCFinish` 恢复为废弃符号**（#1953）
-
-   v0.16.2 重新加回该 API 作为废弃符号，便于 pre-v0.15 代码继续编译。
-
-5. **流式相关接口废弃**
+3. **流式相关接口废弃**
    - `client.WithStreamRecvTimeout` 废弃，使用 `client.WithStreamRecvTimeoutConfig` 替代（#1911）
    - `streamcall.WithRecvTimeout` 废弃，使用 `streamcall.WithRecvTimeoutConfig` 替代（#1911）
-   - `rpcinfo.TraceController.GetStreamEventHandler()` 废弃，使用 `TraceController.Handle*` 方法替代（#1905）
-   - `internal/stream.StreamEventHandler` 类型废弃，使用 `rpcinfo.ClientStreamEventHandler` / `rpcinfo.ServerStreamEventHandler` 替代（#1905）
 
 ## **详细变更**
 
