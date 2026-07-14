@@ -33,7 +33,7 @@ Prepare model config (OpenAI as an example):
 
 ```bash
 export OPENAI_API_KEY="..."
-export OPENAI_MODEL="gpt-4.1-mini"
+export OPENAI_MODEL="gpt-5.4"
 ```
 
 Run:

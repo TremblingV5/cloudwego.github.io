@@ -169,7 +169,7 @@ cd eino-examples/quickstart/chatwitheino
 
 ```bash
 export OPENAI_API_KEY="..."
-export OPENAI_MODEL="gpt-4.1-mini"  # OpenAI 2025 new model, gpt-4o or gpt-4o-mini also work
+export OPENAI_MODEL="gpt-5.4"  # OpenAI 2025 new model, gpt-4o or gpt-4o-mini also work
 # Optional:
 # OPENAI_BASE_URL (proxy or compatible service)
 # OPENAI_BY_AZURE=true (use Azure OpenAI)

@@ -48,7 +48,7 @@ go run ./cmd/ch06
 ```
 [trace] starting session: 083d16da-6b13-4fe6-afb0-c45d8f490ce1
 you> 你好
-[trace] chat_model_generate: model=gpt-4.1-mini tokens=150
+[trace] chat_model_generate: model=gpt-5.4 tokens=150
 [trace] tool_call: name=list_files duration=23ms
 [assistant] 你好！有什么我可以帮助你的吗？
 ```

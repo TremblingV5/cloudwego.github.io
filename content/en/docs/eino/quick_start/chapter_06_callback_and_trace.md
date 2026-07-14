@@ -48,7 +48,7 @@ Example output:
 ```
 [trace] starting session: 083d16da-6b13-4fe6-afb0-c45d8f490ce1
 you> Hello
-[trace] chat_model_generate: model=gpt-4.1-mini tokens=150
+[trace] chat_model_generate: model=gpt-5.4 tokens=150
 [trace] tool_call: name=list_files duration=23ms
 [assistant] Hello! How can I help you?
 ```
