@@ -228,8 +228,8 @@ Fully implementing the `Handler` interface requires implementing all 5 methods, 
 ```go
 import "github.com/cloudwego/eino/callbacks"
 
-// Use NewHandlerHelper to register callbacks of interest
-handler := callbacks.NewHandlerHelper().
+// Use NewHandlerBuilder to register callbacks of interest
+handler := callbacks.NewHandlerBuilder().
     OnStart(func(ctx context.Context, info *callbacks.RunInfo, input callbacks.CallbackInput) context.Context {
         log.Printf("[trace] %s/%s start", info.Component, info.Name)
         return ctx

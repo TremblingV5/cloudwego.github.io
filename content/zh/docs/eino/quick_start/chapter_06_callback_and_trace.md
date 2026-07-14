@@ -226,8 +226,8 @@ Callback 在组件生命周期的 5 个关键时机触发。下表中 `Timing*` 
 ```go
 import "github.com/cloudwego/eino/callbacks"
 
-// 使用 NewHandlerHelper 注册感兴趣的回调
-handler := callbacks.NewHandlerHelper().
+// 使用 NewHandlerBuilder 注册感兴趣的回调
+handler := callbacks.NewHandlerBuilder().
     OnStart(func(ctx context.Context, info *callbacks.RunInfo, input callbacks.CallbackInput) context.Context {
         log.Printf("[trace] %s/%s start", info.Component, info.Name)
         return ctx
